@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chatbot with Memory</title>
+  <meta charset="UTF-8">
+  <style>
+    /* Base styling for layout and fonts */
+    body {
+      font-family: sans-serif;
+      padding: 2em;
+      max-width: 700px;
+      margin: auto;
+      background: #f9fafb;
+    }
+    h2 {
+      color: #1f2937;
+    }
+
+    /* Chat container */
+    #chat {
+      background: #f3f4f6;
+      padding: 1em;
+      border-radius: 8px;
+      height: 65vh; /* Dynamic height */
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+
+    /* Each full user+AI message group */
+    .message-block {
+      margin-bottom: 1.5em;
+    }
+
+    /* User message label */
+    .user {
+      font-weight: bold;
+      color: #1e3a8a;
+    }
+
+    /* AI message label and spacing from user input */
+    .bot {
+      font-weight: bold;
+      color: #111827;
+      display: block;
+      margin-top: 0.5em; /* 👈 small spacing between user and AI reply */
+    }
+
+    /* Input field and button */
+    input, button {
+      width: 100%;
+      padding: 0.75em;
+      margin-top: 1em;
+      font-size: 1rem;
+    }
+
+    /* Button styling */
+    button {
+      background-color: #6366f1;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    /* Hover effect for button */
+    button:hover {
+      background-color: #4f46e5;
+    }
+  </style>
+</head>
+<body>
+  <h2>Chat with Local AI (Memory Enabled)</h2>
+
+  <!-- Chat messages appear here -->
+  <div id="chat"></div>
+
+  <!-- Input area -->
+  <input type="text" id="userInput" placeholder="Say something..." onkeypress="if(event.key === 'Enter') chat()">
+  <button onclick="chat()">Send</button>
+
+  <script>
+    // Array to store message history (used by chat endpoint)
+    const messages = [];
+
+    // Main chat function triggered on send/enter
+    async function chat() {
+      const input = document.getElementById("userInput");
+      const chatDiv = document.getElementById("chat");
+      const userText = input.value.trim();
+      if (!userText) return;
+
+      // Add user input to message history
+      messages.push({ role: "user", content: userText });
+
+      // Create a new message block for user and bot
+      const messageBlock = document.createElement("div");
+      messageBlock.className = "message-block";
+
+      // Display user message
+      const userMessage = document.createElement("div");
+      userMessage.innerHTML = `<span class="user">You:</span> ${userText}`;
+      messageBlock.appendChild(userMessage);
+
+      // Setup placeholder for AI response
+      const botMessage = document.createElement("div");
+      botMessage.innerHTML = `<span class="bot">AI:</span> <span class="response"></span>`;
+      messageBlock.appendChild(botMessage);
+
+      // Add message block to chat window
+      chatDiv.appendChild(messageBlock);
+      input.value = "";
+      chatDiv.scrollTop = chatDiv.scrollHeight;
+
+      // Send request to local AI server (Ollama) using chat endpoint
+      const response = await fetch("http://localhost:11434/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "mistral:7b",     // You can change this to any supported local model
+          messages: messages,
+          stream: true,            // Enables streaming response
+          think: false             // Optional: disables "thinking" stage if supported
+        })
+      });
+
+      // Setup streaming reader
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = "";
+
+      const responseSpan = botMessage.querySelector(".response");
+
+      // Read streamed response line-by-line
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.trim().split("\n");
+
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.message?.content) {
+              // Append streamed tokens to response
+              fullResponse += parsed.message.content;
+              responseSpan.textContent = fullResponse;
+              chatDiv.scrollTop = chatDiv.scrollHeight;
+            }
+          } catch (e) {
+            console.error("Invalid JSON from model:", line);
+          }
+        }
+      }
+
+      // Store assistant response to continue context
+      messages.push({ role: "assistant", content: fullResponse.trim() });
+    }
+  </script>
+</body>
+</html>

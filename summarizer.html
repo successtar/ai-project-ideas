@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Local AI Summarizer</title>
+  <meta charset="UTF-8">
+  <style>
+    /* Base layout styling */
+    body {
+      font-family: sans-serif;
+      padding: 2em;
+      max-width: 700px;
+      margin: auto;
+      background-color: #f9f9f9;
+    }
+
+    h2 {
+      color: #1f2937;
+    }
+
+    /* Input and button styling */
+    textarea, button {
+      width: 100%;
+      font-size: 1rem;
+      margin-top: 1em;
+      padding: 0.75em;
+    }
+
+    /* Button style and hover effect */
+    button {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background-color: #2563eb;
+    }
+
+    /* Output box style */
+    #output {
+      margin-top: 2em;
+      background: #f3f4f6;
+      padding: 1em;
+      border-left: 4px solid #3b82f6;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      line-height: 22px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Summarize with Local AI</h2>
+
+  <!-- User input text area -->
+  <textarea id="inputText" rows="8" placeholder="Paste your content here..."></textarea>
+
+  <!-- Button to trigger summarization -->
+  <button onclick="summarize()">Summarize</button>
+
+  <!-- Output area for summary -->
+  <div id="output"><strong>Summary will appear here...</strong></div>
+
+  <script>
+    // Function to send text to local AI and receive a summary
+    async function summarize() {
+      const input = document.getElementById("inputText").value;  // Get user input text
+      const outputDiv = document.getElementById("output");       // Reference to output container
+      outputDiv.innerHTML = "<em>Summarizing...</em>";           // Temporary loading message
+
+      // Send POST request to Ollama's local AI API
+      const response = await fetch("http://localhost:11434/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "llama3.2:1b",                                   // Local model name
+          prompt: `Summarize the following in maximum of two sentences:\n\n${input}`,
+          stream: true,                                           // Enable token-by-token streaming
+          think: false                                            // Skip optional "thinking" phase
+        })
+      });
+
+      // Handle streamed response
+      const reader = response.body.getReader();                   // Stream reader
+      const decoder = new TextDecoder();                          // Decoder for UTF-8 bytes
+      let summary = "";
+
+      // Read and parse streamed JSON line-by-line
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.trim().split("\n");
+
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);                      // Parse each JSON line
+            if (parsed.response) {
+              summary += parsed.response;                         // Accumulate streamed response
+              outputDiv.innerText = summary;                      // Show summary in real-time
+            }
+          } catch (e) {
+            console.error("Failed to parse chunk:", line);        // Handle malformed JSON errors
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>

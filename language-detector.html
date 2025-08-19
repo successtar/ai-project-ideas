@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Language Detector</title>
+  <meta charset="UTF-8">
+  <style>
+    /* Basic layout and styling */
+    body {
+      font-family: sans-serif;
+      padding: 2em;
+      max-width: 700px;
+      margin: auto;
+      background-color: #f9f9f9;
+    }
+
+    h2 {
+      color: #1f2937;
+    }
+
+    /* Style for input and button */
+    textarea, button {
+      width: 100%;
+      font-size: 1rem;
+      margin-top: 1em;
+      padding: 0.75em;
+    }
+
+    /* Button color and hover */
+    button {
+      background-color: #10b981;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background-color: #059669;
+    }
+
+    /* Output box */
+    #output {
+      margin-top: 2em;
+      background: #ecfdf5;
+      padding: 1em;
+      border-left: 4px solid #10b981;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      line-height: 22px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Detect Language with Local AI</h2>
+
+  <!-- User input field -->
+  <textarea id="inputText" rows="5" placeholder="Type something in any language..."></textarea>
+
+  <!-- Button to trigger detection -->
+  <button onclick="detectLanguage()">Detect Language</button>
+
+  <!-- Output area for the result -->
+  <div id="output"><strong>Result will appear here...</strong></div>
+
+  <script>
+    // Function to send the text to the local AI and detect the language
+    async function detectLanguage() {
+      const input = document.getElementById("inputText").value;   // Get user input
+      const outputDiv = document.getElementById("output");        // Reference to result box
+      outputDiv.innerHTML = "<em>Detecting language...</em>";     // Show a loading message
+
+      // Send a POST request to local AI API (Ollama)
+      const response = await fetch("http://localhost:11434/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "deepseek-r1:8b",                                 // Use a language-aware model
+          prompt: `What language is this? Just respond with the language name:\n\n${input}`,
+          stream: true,                                            // Enable streaming output
+          think: false                                             // Optional: disables intermediate "thinking"
+        })
+      });
+
+      const reader = response.body.getReader();                   // Get stream reader
+      const decoder = new TextDecoder();                          // Decode text from stream
+      let result = "";
+
+      // Read streamed chunks until done
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.trim().split("\n");
+
+        // Parse each line of streamed JSON
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.response) {
+              result += parsed.response;                          // Accumulate response
+              outputDiv.innerText = result;                       // Show result to user
+            }
+          } catch (e) {
+            console.error("Invalid JSON:", line);                 // Handle parse error
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>
